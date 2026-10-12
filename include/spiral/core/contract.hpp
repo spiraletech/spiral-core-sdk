@@ -38,10 +38,11 @@ public:
   const auto wanted=std::size_t(16)+n+m;
   if(s.size()<wanted)return {{},DecodeError::truncated};
   if(s.size()>wanted)return {{},DecodeError::trailing_data};
-  const std::string topic(s.begin()+12,s.begin()+12+n);
+  // Validate untrusted frames without allocating; materialize only after checksum passes.
+  const std::string_view topic(reinterpret_cast<const char*>(s.data()+12),n);
   if(!topic_valid(topic))return {{},DecodeError::invalid_topic};
   if(hash(s.first(wanted-4))!=read32(s,wanted-4))return {{},DecodeError::checksum_mismatch};
-  Message out;out.version=1;out.topic=topic;out.payload.assign(s.begin()+12+n,s.begin()+12+n+m);
+  Message out;out.version=1;out.topic.assign(topic);out.payload.assign(s.begin()+12+n,s.begin()+12+n+m);
   return {std::move(out),DecodeError::none};
  }
 };
