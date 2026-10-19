@@ -16,9 +16,16 @@ class EventBus {
  std::size_t next_id_{1};
  public:
  template<class Event, class Handler> std::size_t subscribe(Handler&& handler) {
+  // User-defined handler construction can throw or reenter the bus.
+  // Prepare it before acquiring the subscription mutex.
+  Callback callback{[fn=std::forward<Handler>(handler)](const void* p){fn(*static_cast<const Event*>(p));}};
+  Slot pending{0,std::move(callback)};
   std::lock_guard lock(mutex_);
-  const auto id=next_id_++;
-  slots_[typeid(Event)].push_back({id,[fn=std::forward<Handler>(handler)](const void* p){fn(*static_cast<const Event*>(p));}});
+  const auto id=next_id_;
+  pending.id=id;
+  slots_[typeid(Event)].push_back(std::move(pending));
+  // A failed map/vector allocation must not consume a subscription ID.
+  ++next_id_;
   return id;
  }
  template<class Event> void unsubscribe(std::size_t id) {
