@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <typeindex>
 #include <utility>
@@ -10,7 +11,7 @@
 namespace spiral::core {
 class EventBus {
  using Callback = std::function<void(const void*)>;
- struct Slot { std::size_t id; Callback callback; };
+ struct Slot { std::size_t id; std::shared_ptr<Callback> callback; };
  std::mutex mutex_;
  std::map<std::type_index, std::vector<Slot>> slots_;
  std::size_t next_id_{1};
@@ -19,7 +20,9 @@ class EventBus {
   // User-defined handler construction can throw or reenter the bus.
   // Prepare it before acquiring the subscription mutex.
   Callback callback{[fn=std::forward<Handler>(handler)](const void* p){fn(*static_cast<const Event*>(p));}};
-  Slot pending{0,std::move(callback)};
+  // Stable ownership: snapshotting must never copy a user-defined handler
+  // while the bus mutex is held, or reset mutable handler state.
+  Slot pending{0,std::make_shared<Callback>(std::move(callback))};
   std::lock_guard lock(mutex_);
   const auto id=next_id_;
   pending.id=id;
@@ -38,7 +41,7 @@ class EventBus {
  template<class Event> void publish(const Event& event) {
   std::vector<Slot> snapshot;
   { std::lock_guard lock(mutex_); auto it=slots_.find(typeid(Event)); if(it!=slots_.end()) snapshot=it->second; }
-  for(const auto& slot:snapshot) slot.callback(&event);
+  for(const auto& slot:snapshot) (*slot.callback)(&event);
  }
 };
 }
