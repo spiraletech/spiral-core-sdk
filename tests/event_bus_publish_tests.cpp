@@ -28,6 +28,18 @@ int main() {
  state_bus.publish(Ping{1});
  if (observed_state != 2) { std::cerr << "handler state lost between publishes\n"; ++failures; }
 
+ // A non-const callable (such as a mutable lambda) must be accepted, and
+ // its captured state must survive successive publishes.
+ spiral::core::EventBus mutable_bus;
+ int observed_mutable = 0;
+ mutable_bus.subscribe<Ping>([counter = 0, &observed_mutable](const Ping&) mutable {
+  observed_mutable = ++counter;
+ });
+ mutable_bus.publish(Ping{1});
+ if (observed_mutable != 1) { std::cerr << "mutable handler first publish incorrect\n"; ++failures; }
+ mutable_bus.publish(Ping{1});
+ if (observed_mutable != 2) { std::cerr << "mutable handler state lost\n"; ++failures; }
+
  spiral::core::EventBus copy_bus;
  bool reject_copy = false;
  int calls = 0;

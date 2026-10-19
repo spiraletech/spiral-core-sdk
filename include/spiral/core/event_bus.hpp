@@ -19,7 +19,7 @@ class EventBus {
  template<class Event, class Handler> std::size_t subscribe(Handler&& handler) {
   // User-defined handler construction can throw or reenter the bus.
   // Prepare it before acquiring the subscription mutex.
-  Callback callback{[fn=std::forward<Handler>(handler)](const void* p){fn(*static_cast<const Event*>(p));}};
+  Callback callback{[fn=std::forward<Handler>(handler)](const void* p) mutable {fn(*static_cast<const Event*>(p));}};
   // Stable ownership: snapshotting must never copy a user-defined handler
   // while the bus mutex is held, or reset mutable handler state.
   Slot pending{0,std::make_shared<Callback>(std::move(callback))};
