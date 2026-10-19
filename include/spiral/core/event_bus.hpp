@@ -32,11 +32,19 @@ class EventBus {
   return id;
  }
  template<class Event> void unsubscribe(std::size_t id) {
-  std::lock_guard lock(mutex_);
-  auto it=slots_.find(typeid(Event));
-  if(it==slots_.end()) return;
-  auto& vec=it->second;
-  std::erase_if(vec,[id](const Slot& s){return s.id==id;});
+  // Destruction of a user callback may reenter this bus. Retain its last
+  // owner until after the subscription mutex has been released.
+  std::shared_ptr<Callback> retired;
+  {
+   std::lock_guard lock(mutex_);
+   auto it=slots_.find(typeid(Event));
+   if(it==slots_.end()) return;
+   auto& vec=it->second;
+   auto slot=std::find_if(vec.begin(),vec.end(),[id](const Slot& s){return s.id==id;});
+   if(slot==vec.end()) return;
+   retired=std::move(slot->callback);
+   vec.erase(slot);
+  }
  }
  template<class Event> void publish(const Event& event) {
   std::vector<Slot> snapshot;
