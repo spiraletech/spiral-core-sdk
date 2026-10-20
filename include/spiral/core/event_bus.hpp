@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <type_traits>
 #include <typeindex>
 #include <utility>
 #include <vector>
@@ -19,7 +20,20 @@ class EventBus {
  template<class Event, class Handler> std::size_t subscribe(Handler&& handler) {
   // User-defined handler construction can throw or reenter the bus.
   // Prepare it before acquiring the subscription mutex.
-  Callback callback{[fn=std::forward<Handler>(handler)](const void* p) mutable {fn(*static_cast<const Event*>(p));}};
+  // std::function requires a copyable target. Keep the existing direct
+  // capture for copyable handlers; box move-only handlers before locking.
+  Callback callback = [&]() -> Callback {
+   if constexpr (std::is_copy_constructible_v<std::decay_t<Handler>>) {
+    return [fn=std::forward<Handler>(handler)](const void* p) mutable {
+     fn(*static_cast<const Event*>(p));
+    };
+   } else {
+    auto fn=std::make_shared<std::decay_t<Handler>>(std::forward<Handler>(handler));
+    return [fn=std::move(fn)](const void* p) {
+     (*fn)(*static_cast<const Event*>(p));
+    };
+   }
+  }();
   // Stable ownership: snapshotting must never copy a user-defined handler
   // while the bus mutex is held, or reset mutable handler state.
   Slot pending{0,std::make_shared<Callback>(std::move(callback))};
