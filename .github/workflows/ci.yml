@@ -20,8 +20,10 @@ jobs:
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
       - name: Install SDK to isolated prefix
         run: cmake --install build --config ${{ matrix.build_type }} --prefix "${{ github.workspace }}/sdk-install"
+      - name: Relocate SDK to prove installed package is relocatable
+        run: cmake -E rename "${{ github.workspace }}/sdk-install" "${{ github.workspace }}/sdk-relocated"
       - name: Configure installed consumer
-        run: cmake -S tests/downstream_consumer -B consumer-build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH="${{ github.workspace }}/sdk-install"
+        run: cmake -S tests/downstream_consumer -B consumer-build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH="${{ github.workspace }}/sdk-relocated"
       - name: Build installed consumer
         run: cmake --build consumer-build --config ${{ matrix.build_type }}
       - name: Test installed consumer
